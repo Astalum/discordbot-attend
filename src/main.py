@@ -25,8 +25,6 @@ async def on_ready():
     print("bot is online!")
     global write_json
     global write_txt
-    # アクティビティを設定
-    new_activity = f"出欠席リアクション"
     write_json = False
     write_txt = False
     await client.change_presence(activity=discord.Game(name=new_activity))
