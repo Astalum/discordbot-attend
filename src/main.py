@@ -27,7 +27,7 @@ async def on_ready():
     global write_txt
     write_json = False
     write_txt = False
-    await client.change_presence(activity=discord.Game(name=new_activity))
+    await client.change_presence(activity=discord.Game)
     # スラッシュコマンドを同期
     await tree.sync()
 
