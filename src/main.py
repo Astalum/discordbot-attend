@@ -4,11 +4,14 @@ import config
 from discord import app_commands
 import json
 import os
+from discord.ext import commands
 
 intents = discord.Intents.all()
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
+bot = commands.Bot(command_prefix="/", intents=intents)
 
+PATH_TERM_OF_EXECUTION = "./src/server_version.txt"
 # dockercontainer用
 path_json = "/shared_data/reactions.json"
 path_txt = "/shared_data/id.txt"
@@ -118,7 +121,7 @@ async def on_message(message):
         await message.channel.send("アプリIDの設定が完了しました")
 
 
-@tree.command(
+@bot.tree.command(
     name="update_reactions-id",
     description="出欠席リアクションIDを設定します、まずバージョンキー（使用サーバの年度）を入力してください",
 )
@@ -191,12 +194,47 @@ async def start_update_reaction(interaction: discord.Interaction):
 
 
 # スラッシュコマンド：BotアプリID設定
-@tree.command(name="update_bot-id", description="botのアプリIDを設定します")
+@bot.tree.command(name="update_bot-id", description="botのアプリIDを設定します")
 async def finish_update_reaction(interaction: discord.Interaction):
     client.state["write_txt"] = True
     await interaction.response.send_message(
         "botのアプリIDを設定します。アプリIDを返信してください。"
     )
+
+
+@bot.tree.command(
+    name="set_attender-server-version",
+    description="サーバのバージョンを記録します",
+)
+async def set_server_version(interaction: discord.Interaction):
+    await interaction.response.send_message(
+        "使用するサーバの年度を数字のみでこのチャンネルで送ってください。"
+    )
+
+    def check(m):
+        return m.author == interaction.user and m.channel == interaction.channel
+
+    try:
+        msg = await bot.wait_for(
+            "message", check=check, timeout=60.0
+        )  # 60秒のタイムアウト
+    except asyncio.TimeoutError:
+        await interaction.followup.send(
+            "⚠️ 時間切れです。もう一度 `/set_server_version` を実行してください。"
+        )
+        return
+
+    if not msg.content.isdigit():
+        await interaction.followup.send(
+            "⚠️ 入力は数字のみでお願いします。もう一度 `/set_server_version` を実行してください。"
+        )
+        return
+
+    file_path = os.path.join(os.path.dirname(__file__), PATH_TERM_OF_EXECUTION)
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(f"{msg.content}\n")
+
+    await interaction.followup.send("✅ サーバのバージョンを書き込みました。")
 
 
 # Bot起動
