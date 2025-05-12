@@ -11,7 +11,7 @@ client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 bot = commands.Bot(command_prefix="/", intents=intents)
 
-PATH_TERM_OF_EXECUTION = "./src/server_version.txt"
+PATH_SERVER_VERSION = "./src/server_version.txt"
 # dockercontainer用
 path_json = "/shared_data/reactions.json"
 path_txt = "/shared_data/id.txt"
@@ -230,7 +230,7 @@ async def set_server_version(interaction: discord.Interaction):
         )
         return
 
-    file_path = os.path.join(os.path.dirname(__file__), PATH_TERM_OF_EXECUTION)
+    file_path = os.path.join(os.path.dirname(__file__), PATH_SERVER_VERSION)
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(f"{msg.content}\n")
 
