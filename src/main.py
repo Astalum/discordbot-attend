@@ -1,3 +1,4 @@
+import asyncio
 import discord
 import config
 from discord import app_commands
@@ -20,34 +21,14 @@ client.state = {
     "write_json": False,
     "write_txt": False,
     "reaction_num": 0,
+    "current_version_key": None,  # ユーザーに聞いたバージョンキーを保持
 }
-
-
-# ファイルの初期化（存在しない場合に作成）
-def initialize_files():
-    if not os.path.exists(path_json):
-        with open(path_json, "w") as f:
-            json.dump(
-                {
-                    "Soprano_attend": "",
-                    "Alto_attend": "",
-                    "Tenor_attend": "",
-                    "Bass_attend": "",
-                },
-                f,
-                indent=4,
-            )
-
-    if not os.path.exists(path_txt):
-        with open(path_txt, "w") as f:
-            f.write("")
 
 
 # bot起動時に発火
 @client.event
 async def on_ready():
     print("bot is online!")
-    initialize_files()
     await client.change_presence(activity=discord.Game(name="出欠確認中"))
     await tree.sync()
 
@@ -88,24 +69,46 @@ async def on_message(message):
 
     # JSONファイルへのリアクションID書き込み
     if state["write_json"]:
-        with open(path_json, "r") as f_r:
-            reaction_dict = json.load(f_r)
-        reaction_list = list(reaction_dict)
-
-        if state["reaction_num"] + 2 > len(reaction_list):
+        version_key = state["current_version_key"]
+        if not version_key:
+            await message.channel.send("❌ バージョンキーが設定されていません。")
             state["write_json"] = False
-            await message.channel.send(
-                "出欠席リアクションの設定を終了しました。@メンションをして正しく設定されているかを確認してください。"
-            )
-        else:
-            await message.channel.send(reaction_list[state["reaction_num"] + 1])
+            return
 
-        if state["reaction_num"] < len(reaction_list):
-            dict_key = reaction_list[state["reaction_num"]]
-            reaction_dict[dict_key] = message.content
+        with open(path_json, "r") as f_r:
+            all_reactions = json.load(f_r)
+
+        # 初期化（まだこのバージョンキーがない場合）
+        if version_key not in all_reactions:
+            all_reactions[version_key] = {
+                "Soprano_attend": "",
+                "Alto_attend": "",
+                "Tenor_attend": "",
+                "Bass_attend": "",
+                "Soprano_absent": "",
+                "Alto_absent": "",
+                "Tenor_absent": "",
+                "Bass_absent": "",
+                "delay": "",
+                "off_stage": "",
+            }
+
+        reaction_keys = list(all_reactions[version_key])
+
+        if state["reaction_num"] + 2 > len(reaction_keys):
+            state["write_json"] = False
+            state["current_version_key"] = None
+            await message.channel.send("✅ 出欠席リアクションIDの設定を完了しました。")
+        else:
+            await message.channel.send(reaction_keys[state["reaction_num"] + 1])
+
+        if state["reaction_num"] < len(reaction_keys):
+            key = reaction_keys[state["reaction_num"]]
+            all_reactions[version_key][key] = message.content
             state["reaction_num"] += 1
+
             with open(path_json, "w") as f_w:
-                json.dump(reaction_dict, f_w, indent=4)
+                json.dump(all_reactions, f_w, indent=4, ensure_ascii=False)
 
     # TXTファイルへのアプリID書き込み
     if state["write_txt"]:
@@ -115,16 +118,76 @@ async def on_message(message):
         await message.channel.send("アプリIDの設定が完了しました")
 
 
-# スラッシュコマンド：リアクションID設定開始
 @tree.command(
-    name="update_reactions-id", description="出欠席リアクションIDを設定します"
+    name="update_reactions-id",
+    description="出欠席リアクションIDを設定します、まずバージョンキー（使用サーバの年度）を入力してください",
 )
 async def start_update_reaction(interaction: discord.Interaction):
-    client.state["write_json"] = True
-    client.state["reaction_num"] = 0
     await interaction.response.send_message(
-        "出欠席リアクションのIDを設定します。リアクションに対応するものを返信してください。\nSoprano_attend"
+        "📝 この設定の対象となるバージョンキー（例: `2025`）を入力してください。"
     )
+
+    def check_msg(m):
+        return m.author == interaction.user and m.channel == interaction.channel
+
+    try:
+        msg = await client.wait_for("message", check=check_msg, timeout=60.0)
+        version_key = msg.content.strip()
+
+        if not version_key.isdigit():
+            await interaction.followup.send(
+                "⚠️ 無効なキーです。数値（例: `2025`）を入力してください。"
+            )
+            return
+
+        # JSONの読み込み
+        with open(path_json, "r") as f:
+            all_reactions = json.load(f)
+
+        # 既存バージョンが存在する場合、上書き確認
+        if version_key in all_reactions:
+            warning_msg = await interaction.followup.send(
+                f"⚠️ バージョンキー `{version_key}` はすでに存在します。上書きしてもよろしいですか？",
+            )
+            await warning_msg.add_reaction("✅")
+            await warning_msg.add_reaction("❌")
+
+            def check_reaction(reaction, user):
+                return (
+                    user == interaction.user
+                    and reaction.message.id == warning_msg.id
+                    and str(reaction.emoji) in ["✅", "❌"]
+                )
+
+            try:
+                reaction, _ = await client.wait_for(
+                    "reaction_add", check=check_reaction, timeout=30.0
+                )
+
+                if str(reaction.emoji) == "❌":
+                    await interaction.followup.send("❌ 操作をキャンセルしました。")
+                    return
+                # ✅ の場合 → 続行
+
+            except asyncio.TimeoutError:
+                await interaction.followup.send(
+                    "⏰ 時間切れです。操作をキャンセルしました。"
+                )
+                return
+
+        # 書き込み処理を続行
+        client.state["write_json"] = True
+        client.state["reaction_num"] = 0
+        client.state["current_version_key"] = version_key
+
+        await interaction.followup.send(
+            f"✅ バージョンキー `{version_key}` に対してリアクションIDの設定を開始します。\nまず `Soprano_attend` に対応するリアクションIDを送信してください。"
+        )
+
+    except asyncio.TimeoutError:
+        await interaction.followup.send(
+            "⏰ 時間切れです。もう一度 `/update_reactions-id` を実行してください。"
+        )
 
 
 # スラッシュコマンド：BotアプリID設定
