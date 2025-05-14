@@ -31,7 +31,7 @@ client.state = {
 # bot起動時に発火
 @client.event
 async def on_ready():
-    print("bot is online!")
+    print(f"✅ ログインしました: {bot.user}")
     await client.change_presence(activity=discord.Game(name="出欠確認中"))
     await tree.sync()
 
