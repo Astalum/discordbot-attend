@@ -11,7 +11,7 @@ client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 bot = commands.Bot(command_prefix="/", intents=intents)
 
-PATH_SERVER_VERSION = "./src/server_version.txt"
+PATH_SERVER_VERSION = "/app/src/server_version.txt"
 # dockercontainer用
 path_json = "/shared_data/reactions.json"
 path_txt = "/shared_data/id.txt"
